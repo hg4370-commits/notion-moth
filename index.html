@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>재가센터 월간 일정 (Firebase 자동 동기화)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+            background: #e8f1ec;
+            padding: 5px;
+            min-height: 100vh;
+        }
+
+        .calendar-container {
+            max-width: 600px;
+            width: 100%;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5vw 2vw;
+            background: #bcddca;
+        }
+
+        .nav-btn {
+            background: white;
+            border: none;
+            padding: 0.8vw 1.5vw;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: clamp(8px, 1.8vw, 10px);
+            font-weight: 600;
+            color: #333;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .nav-btn:hover {
+            background: #f0f0f0;
+            transform: scale(1.05);
+        }
+
+        .current-month {
+            font-size: clamp(10px, 2.2vw, 13px);
+            font-weight: 700;
+            color: #333;
+        }
+
+        .button-container {
+            display: flex;
+            gap: 0.8vw;
+            padding: 1vw;
+            flex-wrap: wrap;
+            background: #bcddca;
+        }
+
+        .top-btn {
+            background: #4a9d6f;
+            color: white;
+            border: none;
+            padding: 0.6vw 1.5vw;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: clamp(7px, 1.6vw, 9px);
+            transition: all 0.3s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            white-space: nowrap;
+        }
+
+        .top-btn:hover {
+            background: #3d8660;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+        }
+
+        .weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            background: #bcddca;
+            padding: 0.6vw;
+            gap: 0.4vw;
+        }
+
+        .weekday {
+            text-align: center;
+            font-weight: 600;
+            color: #333;
+            padding: 0.8vw 0.4vw;
+            font-size: clamp(7px, 1.6vw, 9px);
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 4px;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0.4vw;
+            padding: 0.6vw;
+            background: #e8f1ec;
+        }
+
+        .calendar-day {
+            min-height: 8vw;
+            background: white;
+            border-radius: 4px;
+            padding: 0.6vw;
+            position: relative;
+        }
+
+        .calendar-day.drag-over {
+            background: #f0f8f4;
+            border: 2px dashed #4a9d6f;
+        }
+
+        .calendar-day.other-month {
+            opacity: 0.4;
+        }
+
+        .calendar-day.today {
+            background: #fff5f5;
+            box-shadow: 0 0 0 2px #ff8fab;
+        }
+
+        .calendar-day.weekend {
+            background: #f8f8f8;
+        }
+
+        .day-number {
+            font-weight: 600;
+            font-size: clamp(7px, 1.6vw, 9px);
+            color: #333;
+            margin-bottom: 0.4vw;
+        }
+
+        .event-item {
+            font-size: clamp(5px, 1.2vw, 7px);
+            padding: 0.2vw 0.6vw;
+            margin-bottom: 0.2vw;
+            border-radius: 2px;
+            color: #333;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: move;
+            transition: all 0.2s;
+        }
+
+        .event-item:hover {
+            opacity: 0.8;
+            transform: scale(1.02);
+        }
+
+        .event-item.dragging {
+            opacity: 0.5;
+        }
+
+        .event-bar {
+            font-size: clamp(5px, 1.2vw, 7px);
+            padding: 0.2vw 0.6vw;
+            margin-bottom: 0.2vw;
+            border-radius: 2px;
+            color: #333;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: move;
+            transition: all 0.2s;
+        }
+
+        .event-bar:hover {
+            opacity: 0.8;
+        }
+
+        .event-bar.dragging {
+            opacity: 0.5;
+        }
+
+        /* 일정 색상 */
+        .event-청구 { background: #faccec; }
+        .event-본인부담금 { background: #cee1ff; }
+        .event-우편발송 { background: #87b3ef; }
+        .event-어르신상담 { background: #bcddca; }
+        .event-급여대장 { background: #b4e7ce; }
+        .event-상실신고 { background: #a8d8ea; }
+        .event-요양일정 { background: #ffe4b5; }
+        .event-제공기록지 { background: #a8d8ea; }
+        .event-명세서 { background: #d4b5f6; }
+        .event-custom { background: #ffd4e0; }
+
+        /* 모달 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            max-width: 280px;
+            width: 90%;
+        }
+
+        .modal-header {
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 8px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 3px;
+            font-weight: 600;
+            color: #333;
+            font-size: 9px;
+        }
+
+        .form-input, .form-textarea {
+            width: 100%;
+            padding: 4px 6px;
+            border: 1px solid #bcddca;
+            border-radius: 4px;
+            font-size: 9px;
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 40px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 5px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 12px;
+            height: 12px;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            font-weight: 500;
+            cursor: pointer;
+            font-size: 9px;
+        }
+
+        .color-palette {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+        }
+
+        .color-option {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .color-option.selected {
+            border-color: #333;
+            transform: scale(1.05);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 5px 8px;
+            border: none;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 9px;
+        }
+
+        .modal-btn-primary {
+            background: #4a9d6f;
+            color: white;
+        }
+
+        .modal-btn-primary:hover {
+            background: #3d8660;
+        }
+
+        .modal-btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .modal-btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .modal-btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .modal-btn-danger:hover {
+            background: #ff5252;
+        }
+
+        /* 연속 일정 스타일 */
+        .multi-day-start {
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+
+        .multi-day-middle {
+            border-radius: 0;
+        }
+
+        .multi-day-end {
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+        }
+
+        .helper-text {
+            font-size: 7px;
+            color: #666;
+            margin-top: 2px;
+        }
+        
+        /* 모바일 반응형 */
+        @media (max-width: 768px) {
+            body {
+                padding: 2px;
+            }
+            
+            .calendar-container {
+                max-width: 100%;
+                border-radius: 0;
+            }
+            
+            .calendar-header {
+                padding: 2vw 2.5vw;
+            }
+            
+            .current-month {
+                font-size: clamp(11px, 2.8vw, 14px);
+            }
+            
+            .nav-btn {
+                padding: 1.2vw 2vw;
+                font-size: clamp(9px, 2.2vw, 11px);
+            }
+            
+            .button-container {
+                padding: 1.5vw 1vw;
+            }
+            
+            .top-btn {
+                padding: 1vw 2vw;
+                font-size: clamp(9px, 2.2vw, 11px);
+            }
+            
+            .weekday {
+                padding: 1.2vw 0.4vw;
+                font-size: clamp(9px, 2.2vw, 11px);
+            }
+            
+            .calendar-day {
+                min-height: 14vw;
+                padding: 0.8vw;
+            }
+            
+            .day-number {
+                font-size: clamp(9px, 2.2vw, 11px);
+                margin-bottom: 0.6vw;
+            }
+            
+            .event-item, .event-bar {
+                font-size: clamp(7px, 1.8vw, 9px);
+                padding: 0.4vw 0.8vw;
+                margin-bottom: 0.4vw;
+            }
+            
+            /* 모바일 모달창 */
+            .modal-content {
+                max-width: 320px;
+                padding: 15px;
+            }
+            
+            .modal-header {
+                font-size: 14px;
+                margin-bottom: 10px;
+            }
+            
+            .form-group {
+                margin-bottom: 10px;
+            }
+            
+            .form-label {
+                font-size: 11px;
+                margin-bottom: 4px;
+            }
+            
+            .form-input, .form-textarea {
+                padding: 6px 8px;
+                font-size: 11px;
+            }
+            
+            .form-textarea {
+                min-height: 50px;
+            }
+            
+            .checkbox-group label {
+                font-size: 11px;
+            }
+            
+            .checkbox-group input[type="checkbox"] {
+                width: 14px;
+                height: 14px;
+            }
+            
+            .color-palette {
+                gap: 6px;
+            }
+            
+            .color-option {
+                border-radius: 5px;
+            }
+            
+            .helper-text {
+                font-size: 9px;
+            }
+            
+            .modal-btn {
+                padding: 8px 10px;
+                font-size: 11px;
+            }
+            
+            .modal-actions {
+                gap: 6px;
+                margin-top: 10px;
+            }
+        }
+        
+        /* 태블릿 크기 */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .calendar-container {
+                max-width: 700px;
+            }
+            
+            /* 태블릿 모달창 - 데스크톱과 동일하게 작게 유지 */
+            .modal-content {
+                max-width: 280px;
+            }
+        }
+
+        /* PIN 입력 화면 */
+        .pin-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #e8f1ec;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 99999;
+        }
+        
+        .pin-overlay.hidden {
+            display: none;
+        }
+        
+        .pin-container {
+            background: white;
+            border-radius: 16px;
+            padding: 35px 25px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            max-width: 340px;
+            width: 90%;
+        }
+        
+        .pin-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .pin-subtitle {
+            font-size: 13px;
+            color: #999;
+            margin-bottom: 30px;
+            font-weight: 400;
+        }
+        
+        .pin-dots {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+        
+        .pin-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #d4e8dd;
+            transition: all 0.3s;
+        }
+        
+        .pin-dot.filled {
+            background: #5db88f;
+            transform: scale(1.1);
+        }
+        
+        .pin-dot.error {
+            background: #e74c3c;
+            border-color: #e74c3c;
+            animation: shake 0.5s;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+        
+        .pin-keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .pin-key {
+            background: #e8f5f0;
+            border: 1.5px solid #c5e3d8;
+            border-radius: 10px;
+            padding: 20px;
+            font-size: 24px;
+            font-weight: 600;
+            color: #2c3e50;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+            min-height: 65px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .pin-key:hover {
+            background: #d4e8dd;
+            transform: scale(1.02);
+            border-color: #a8d5c3;
+        }
+        
+        .pin-key:active {
+            transform: scale(0.95);
+        }
+        
+        .pin-key.special {
+            background: white;
+            color: #5db88f;
+            border-color: #c5e3d8;
+            font-size: 28px;
+        }
+        
+        .pin-key.special:hover {
+            background: #f5f5f5;
+            color: #4da57d;
+            border-color: #a8d5c3;
+        }
+
+        .pin-key.pin-submit {
+            grid-column: span 3;
+            background: #5db88f;
+            color: white;
+            border-color: #5db88f;
+            font-size: 18px;
+        }
+
+        .pin-key.pin-submit:hover {
+            background: #4da57d;
+            border-color: #4da57d;
+        }
+        
+        .pin-message {
+            font-size: 13px;
+            color: #e74c3c;
+            min-height: 20px;
+            margin-top: 10px;
+        }
+        
+        .pin-loading {
+            font-size: 14px;
+            color: #4a9d6f;
+            margin-top: 10px;
+        }
+        
+        @media (max-width: 480px) {
+            .pin-container {
+                padding: 30px 20px;
+            }
+            
+            .pin-title {
+                font-size: 17px;
+            }
+
+            .pin-subtitle {
+                font-size: 12px;
+            }
+            
+            .pin-key {
+                padding: 18px;
+                font-size: 22px;
+                min-height: 60px;
+            }
+
+            .pin-keypad {
+                gap: 8px;
+            }
+
+            .pin-key.special {
+                font-size: 26px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- PIN 입력 화면 -->
+    <div class="pin-overlay" id="pinOverlay">
+        <div class="pin-container">
+            <div class="pin-title">🔐 재가센터 캘린더</div>
+            <div class="pin-subtitle">PIN 번호를 입력하세요</div>
+            
+            <div class="pin-dots">
+                <div class="pin-dot" id="dot1"></div>
+                <div class="pin-dot" id="dot2"></div>
+                <div class="pin-dot" id="dot3"></div>
+                <div class="pin-dot" id="dot4"></div>
+            </div>
+
+            <div class="pin-keypad">
+                <button class="pin-key" onclick="window.pinInput('1')">1</button>
+                <button class="pin-key" onclick="window.pinInput('2')">2</button>
+                <button class="pin-key" onclick="window.pinInput('3')">3</button>
+                <button class="pin-key" onclick="window.pinInput('4')">4</button>
+                <button class="pin-key" onclick="window.pinInput('5')">5</button>
+                <button class="pin-key" onclick="window.pinInput('6')">6</button>
+                <button class="pin-key" onclick="window.pinInput('7')">7</button>
+                <button class="pin-key" onclick="window.pinInput('8')">8</button>
+                <button class="pin-key" onclick="window.pinInput('9')">9</button>
+                <button class="pin-key special" onclick="window.pinClear()">←</button>
+                <button class="pin-key" onclick="window.pinInput('0')">0</button>
+                <button class="pin-key special" onclick="window.pinSubmit()">✓</button>
+            </div>
+
+            <div class="pin-message" id="pinMessage"></div>
+            <div class="pin-loading" id="pinLoading"></div>
+        </div>
+    </div>
+
+    <div class="calendar-container">
+        <div class="calendar-header">
+            <button class="nav-btn" onclick="window.prevMonth()">◀ 이전 달</button>
+            <div class="current-month" id="currentMonth"></div>
+            <button class="nav-btn" onclick="window.nextMonth()">다음 달 ▶</button>
+        </div>
+        
+        <div class="button-container">
+            <button class="top-btn" onclick="window.openAddEventModal()">일정 추가</button>
+            <button class="top-btn" onclick="window.forceSync()" style="background: #3d8660;">🔄 동기화</button>
+        </div>
+
+        <div class="weekdays">
+            <div class="weekday">일</div>
+            <div class="weekday">월</div>
+            <div class="weekday">화</div>
+            <div class="weekday">수</div>
+            <div class="weekday">목</div>
+            <div class="weekday">금</div>
+            <div class="weekday">토</div>
+        </div>
+
+        <div class="calendar-grid" id="calendar"></div>
+    </div>
+
+    <!-- 일정 추가/수정 모달 -->
+    <div class="modal" id="eventModal" onclick="if(event.target.id==='eventModal') window.closeModal()">
+        <div class="modal-content">
+            <div class="modal-header" id="modalTitle">일정 추가</div>
+            
+            <div class="form-group">
+                <label class="form-label">일정 제목</label>
+                <input type="text" class="form-input" id="eventTitle">
+            </div>
+
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="isMultiDayEvent" onchange="window.toggleDateRange()">
+                    <label for="isMultiDayEvent">연속 일정 (여러 날)</label>
+                </div>
+                <div class="helper-text">체크하면 시작일~종료일 설정 가능</div>
+            </div>
+            
+            <div class="form-group" id="excludeWeekendsGroup" style="display: none;">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="excludeWeekends" checked>
+                    <label for="excludeWeekends">주말 제외 (평일만)</label>
+                </div>
+                <div class="helper-text">연속 일정이 평일에만 표시됩니다</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">날짜</label>
+                <div id="dateRangeContainer">
+                    <input type="date" class="form-input" id="eventDateSingle">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">색상</label>
+                <div class="color-palette" id="colorPalette">
+                    <!-- 빨강 계열: 옥음 -> 진함 -->
+                    <div class="color-option" id="color-ffcfd2" style="background: #ffcfd2;" onclick="selectColorDirect('#ffcfd2')"></div>
+                    <div class="color-option selected" id="color-ffd4e0" style="background: #ffd4e0;" onclick="selectColorDirect('#ffd4e0')"></div>
+                    <div class="color-option" id="color-f28482" style="background: #f28482;" onclick="selectColorDirect('#f28482')"></div>
+                    <div class="color-option" id="color-ff5a5f" style="background: #ff5a5f;" onclick="selectColorDirect('#ff5a5f')"></div>
+                    
+                    <!-- 주황/노랑 계열: 옥음 -> 진함 -->
+                    <div class="color-option" id="color-fdffb6" style="background: #fdffb6;" onclick="selectColorDirect('#fdffb6')"></div>
+                    <div class="color-option" id="color-fbf8cc" style="background: #fbf8cc;" onclick="selectColorDirect('#fbf8cc')"></div>
+                    <div class="color-option" id="color-ffe4b5" style="background: #ffe4b5;" onclick="selectColorDirect('#ffe4b5')"></div>
+                    
+                    <!-- 초록 계열: 옥음 -> 진함 -->
+                    <div class="color-option" id="color-eaf4f4" style="background: #eaf4f4;" onclick="selectColorDirect('#eaf4f4')"></div>
+                    <div class="color-option" id="color-cce3de" style="background: #cce3de;" onclick="selectColorDirect('#cce3de')"></div>
+                    <div class="color-option" id="color-b4e7ce" style="background: #b4e7ce;" onclick="selectColorDirect('#b4e7ce')"></div>
+                    <div class="color-option" id="color-bcddca" style="background: #bcddca;" onclick="selectColorDirect('#bcddca')"></div>
+                    <div class="color-option" id="color-6b9080" style="background: #6b9080;" onclick="selectColorDirect('#6b9080')"></div>
+                    
+                    <!-- 파랑 계열: 옥음 -> 진함 -->
+                    <div class="color-option" id="color-cee1ff" style="background: #cee1ff;" onclick="selectColorDirect('#cee1ff')"></div>
+                    <div class="color-option" id="color-a8d8ea" style="background: #a8d8ea;" onclick="selectColorDirect('#a8d8ea')"></div>
+                    <div class="color-option" id="color-87b3ef" style="background: #87b3ef;" onclick="selectColorDirect('#87b3ef')"></div>
+                    
+                    <!-- 보라 계열: 옥음 -> 진함 -->
+                    <div class="color-option" id="color-faccec" style="background: #faccec;" onclick="selectColorDirect('#faccec')"></div>
+                    <div class="color-option" id="color-d4b5f6" style="background: #d4b5f6;" onclick="selectColorDirect('#d4b5f6')"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">메모 (선택)</label>
+                <textarea class="form-textarea" id="eventMemo"></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="modal-btn modal-btn-secondary" onclick="window.closeModal()">취소</button>
+                <button type="button" class="modal-btn modal-btn-danger" id="deleteBtn" onclick="event.stopPropagation(); window.deleteEvent();" style="display: none;">즉시 삭제</button>
+                <button type="button" class="modal-btn modal-btn-primary" onclick="window.saveEvent()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    
+
+
+
+    <!-- Firebase SDK (CDN) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
+
+    <script>
+
+        // ============================================
+        // PIN 입력 + Firebase Auth
+        // ============================================
+        const CORRECT_PIN = "1234";
+        
+        window.currentPin = "";
+        window.pinAttempts = 0;
+        window.maxAttempts = 5;
+        
+        window.pinInput = function(digit) {
+            if (window.currentPin.length < 4) {
+                window.currentPin += digit;
+                window.updatePinDots();
+                
+                if (window.currentPin.length === 4) {
+                    setTimeout(function() {
+                        window.pinSubmit();
+                    }, 300);
+                }
+            }
+        };
+        
+        window.pinClear = function() {
+            window.currentPin = "";
+            window.updatePinDots();
+            document.getElementById('pinMessage').textContent = "";
+        };
+        
+        window.updatePinDots = function() {
+            for (var i = 1; i <= 4; i++) {
+                var dot = document.getElementById('dot' + i);
+                if (i <= window.currentPin.length) {
+                    dot.classList.add('filled');
+                    dot.classList.remove('error');
+                } else {
+                    dot.classList.remove('filled');
+                    dot.classList.remove('error');
+                }
+            }
+        };
+        
+        window.pinSubmit = function() {
+            if (window.currentPin.length !== 4) {
+                document.getElementById('pinMessage').textContent = "4자리를 입력하세요";
+                return;
+            }
+            
+            if (window.currentPin === CORRECT_PIN) {
+                console.log('✅ PIN 확인 성공!');
+                document.getElementById('pinMessage').textContent = "";
+                document.getElementById('pinLoading').textContent = "🔐 인증 중...";
+                
+                window.authenticateWithFirebase();
+            } else {
+                window.pinAttempts++;
+                console.log('❌ PIN 틀림 (' + window.pinAttempts + '/' + window.maxAttempts + ')');
+                
+                for (var i = 1; i <= 4; i++) {
+                    document.getElementById('dot' + i).classList.add('error');
+                }
+                
+                if (window.pinAttempts >= window.maxAttempts) {
+                    document.getElementById('pinMessage').textContent = 
+                        "시도 횟수 초과. 관리자에게 문의하세요.";
+                    document.querySelectorAll('.pin-key').forEach(function(btn) {
+                        btn.disabled = true;
+                        btn.style.opacity = '0.5';
+                    });
+                } else {
+                    document.getElementById('pinMessage').textContent = 
+                        'PIN이 틀렸습니다 (' + window.pinAttempts + '/' + window.maxAttempts + ')';
+                }
+                
+                window.currentPin = "";
+                setTimeout(function() {
+                    window.updatePinDots();
+                }, 500);
+            }
+        };
+        
+        window.authenticateWithFirebase = function() {
+            console.log('🔐 Firebase 익명 로그인 시작...');
+            
+            firebase.auth().signInAnonymously()
+                .then(function(userCredential) {
+                    window.currentUser = userCredential.user;
+                    console.log('✅ Firebase 인증 성공!');
+                    console.log('👤 사용자 UID:', window.currentUser.uid);
+                    
+                    document.getElementById('pinLoading').textContent = "📥 데이터 불러오는 중...";
+                    
+                    // 옵션 1: 최신 데이터 강제 로드 (.once 사용)
+                    var customEventsPromise = database.ref('calendar_data/customEvents').once('value');
+                    var deletedEventsPromise = database.ref('calendar_data/deletedRecurringEvents').once('value');
+                    
+                    Promise.all([customEventsPromise, deletedEventsPromise])
+                        .then(function(snapshots) {
+                            var customSnapshot = snapshots[0];
+                            var deletedSnapshot = snapshots[1];
+                            
+                            // 최신 데이터로 덮어쓰기
+                            window.customEvents = customSnapshot.val() || {};
+                            window.deletedRecurringEvents = deletedSnapshot.val() || [];
+                            
+                            console.log('✅ 최신 데이터 로드 완료!');
+                            console.log('📊 커스텀 일정:', Object.keys(window.customEvents).length, '개');
+                            console.log('🗑️ 삭제된 정기 일정:', window.deletedRecurringEvents.length, '개');
+                            
+                            document.getElementById('pinLoading').textContent = "✅ 인증 완료!";
+                            
+                            // 실시간 리스너 등록 (이후 변경사항 자동 동기화)
+                            window.loadCustomEvents();
+                            
+                            // PIN 화면 숨기고 캘린더 표시
+                            setTimeout(function() {
+                                document.getElementById('pinOverlay').classList.add('hidden');
+                                window.renderCalendar();
+                            }, 500);
+                        })
+                        .catch(function(error) {
+                            console.error('❌ 데이터 로드 실패:', error);
+                            document.getElementById('pinLoading').textContent = "";
+                            document.getElementById('pinMessage').textContent = 
+                                "데이터 로드 실패. 다시 시도하세요.";
+                            window.currentPin = "";
+                            window.updatePinDots();
+                        });
+                })
+                .catch(function(error) {
+                    console.error('❌ Firebase 인증 실패:', error);
+                    document.getElementById('pinLoading').textContent = "";
+                    document.getElementById('pinMessage').textContent = 
+                        "인증 실패. 인터넷 연결을 확인하세요.";
+                    window.currentPin = "";
+                    window.updatePinDots();
+                });
+        };
+        
+        document.addEventListener('keydown', function(e) {
+            if (document.getElementById('pinOverlay').classList.contains('hidden')) return;
+            
+            if (e.key >= '0' && e.key <= '9') {
+                window.pinInput(e.key);
+            } else if (e.key === 'Backspace') {
+                window.pinClear();
+            } else if (e.key === 'Enter') {
+                window.pinSubmit();
+            }
+        });
+        
+        // ============================================
+
+        // Firebase 설정
+        const firebaseConfig = {
+            apiKey: "AIzaSyDq0COBu1ykozOe56wQWzfJRz5moULbrPE",
+            authDomain: "home-care-center-calendar.firebaseapp.com",
+            databaseURL: "https://home-care-center-calendar-default-rtdb.firebaseio.com",
+            projectId: "home-care-center-calendar",
+            storageBucket: "home-care-center-calendar.firebasestorage.app",
+            messagingSenderId: "609266329861",
+            appId: "1:609266329861:web:894513b00c671690baaf6c"
+        };
+
+        // Firebase 초기화
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // 색상 선택 함수 (전역)
+        function selectColorDirect(color) {
+            window.selectedColor = color;
+            
+            // 모든 selected 제거
+            var options = document.getElementsByClassName('color-option');
+            for (var i = 0; i < options.length; i++) {
+                options[i].classList.remove('selected');
+            }
+            
+            // 선택된 색상에 selected 추가
+            var selectedOption = document.getElementById('color-' + color.substring(1));
+            if (selectedOption) {
+                selectedOption.classList.add('selected');
+            }
+        }
+        
+        // 전역 변수
+        window.currentDate = new Date();
+        window.customEvents = {}; // 객체로 변경 (ID 기반)
+        window.deletedRecurringEvents = [];
+        window.isDataLoaded = false; // 데이터 로드 완료 플래그
+        window.isSaving = false; // 저장 중 플래그 (실시간 동기화 충돌 방지) // 삭제된 정기 일정 ID 목록
+        window.selectedColor = '#ffd4e0';
+        window.editingEvent = null;
+        window.draggedEvent = null;
+
+        // Firebase 실시간 동기화 (리스너 등록)
+        window.loadCustomEvents = function() {
+            console.log('🔔 실시간 리스너 등록 중...');
+            
+            // 커스텀 일정 실시간 동기화
+            database.ref('calendar_data/customEvents').on('value', (snapshot) => {
+                // 저장 중일 때는 업데이트 무시 (삭제/수정 충돌 방지)
+                if (window.isSaving) {
+                    console.log('⏸️ 저장 중이라 업데이트 무시');
+                    return;
+                }
+                
+                const data = snapshot.val();
+                if (data) {
+                    window.customEvents = data; // 객체 형태로 저장
+                } else {
+                    window.customEvents = {};
+                }
+                
+                console.log('🔄 실시간 업데이트:', Object.keys(window.customEvents).length, '개 일정');
+                
+                // 이미 초기 로드 완료되었으므로 렌더링만 수행
+                if (window.isDataLoaded) {
+                    window.renderCalendar();
+                }
+            }, (error) => {
+                console.error('데이터 로드 실패:', error);
+                window.customEvents = {};
+            });
+
+            // 삭제된 정기 일정 실시간 동기화
+            database.ref('calendar_data/deletedRecurringEvents').on('value', (snapshot) => {
+                // 저장 중일 때는 업데이트 무시
+                if (window.isSaving) {
+                    return;
+                }
+                
+                const data = snapshot.val();
+                if (data) {
+                    window.deletedRecurringEvents = data;
+                } else {
+                    window.deletedRecurringEvents = [];
+                }
+                
+                // 데이터 로드 완료 후에만 렌더링
+                if (window.isDataLoaded) {
+                    window.renderCalendar();
+                }
+            }, (error) => {
+                console.error('삭제 목록 로드 실패:', error);
+                window.deletedRecurringEvents = [];
+            });
+            
+            console.log('✅ 실시간 리스너 등록 완료!');
+        };
+
+        window.saveCustomEvents = function() {
+            console.log('💾 Firebase 저장 시작...', Object.keys(window.customEvents).length, '개 일정');
+            window.isSaving = true; // 저장 시작
+            
+            database.ref('calendar_data/customEvents').set(window.customEvents)
+                .then(() => {
+                    console.log('✅ 데이터 저장 성공!');
+                    // 저장 완료 후 0.5초 대기 (Firebase 전파 시간)
+                    setTimeout(() => {
+                        window.isSaving = false; // 저장 완료
+                    }, 500);
+                })
+                .catch((error) => {
+                    console.error('데이터 저장 실패:', error);
+                    alert('데이터 저장에 실패했습니다. 인터넷 연결을 확인해주세요.');
+                    window.isSaving = false; // 오류 시에도 플래그 해제
+                });
+        };
+        
+        window.saveDeletedRecurringEvents = function() {
+            window.isSaving = true; // 저장 시작
+            
+            database.ref('calendar_data/deletedRecurringEvents').set(window.deletedRecurringEvents)
+                .then(() => {
+                    console.log('삭제 목록 저장 성공!');
+                    setTimeout(() => {
+                        window.isSaving = false; // 저장 완료
+                    }, 500);
+                })
+                .catch((error) => {
+                    console.error('삭제 목록 저장 실패:', error);
+                    window.isSaving = false; // 오류 시에도 플래그 해제
+                });
+        };
+
+        // 날짜 유틸
+        window.formatDate = function(date) {
+            const d = new Date(date);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        window.addDays = function(dateStr, days) {
+            const date = new Date(dateStr);
+            date.setDate(date.getDate() + days);
+            return window.formatDate(date);
+        };
+
+        window.daysBetween = function(startStr, endStr) {
+            const start = new Date(startStr);
+            const end = new Date(endStr);
+            return Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        };
+        
+        // 평일만 카운트하는 함수
+        window.weekdaysBetween = function(startStr, endStr) {
+            const start = new Date(startStr);
+            const end = new Date(endStr);
+            let count = 0;
+            let current = new Date(start);
+            
+            while (current <= end) {
+                if (window.isWeekday(current)) {
+                    count++;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            
+            return count;
+        };
+        
+        // 평일로 N일 후 날짜 계산 (주말 제외)
+        window.addWeekdays = function(dateStr, weekdays) {
+            let date = new Date(dateStr);
+            let added = 0;
+            
+            while (added < weekdays) {
+                date.setDate(date.getDate() + 1);
+                if (window.isWeekday(date)) {
+                    added++;
+                }
+            }
+            
+            return window.formatDate(date);
+        };
+
+        window.isWeekday = function(date) {
+            const day = date.getDay();
+            return day !== 0 && day !== 6;
+        };
+
+        window.isWeekend = function(date) {
+            return !window.isWeekday(date);
+        };
+
+        // 정기 일정 생성
+        window.generateRecurringEvents = function(year, month) {
+            const events = [];
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            
+            const weekdays = [];
+            for (let day = 1; day <= daysInMonth; day++) {
+                if (window.isWeekday(new Date(year, month, day))) {
+                    weekdays.push(day);
+                }
+            }
+
+            if (weekdays.length === 0) return events;
+
+            // 1. 청구 - 1일
+            events.push({
+                id: `rec-${year}-${month}-청구`,
+                title: '청구',
+                type: '청구',
+                isMultiDay: false,
+                startDate: window.formatDate(new Date(year, month, 1)),
+                endDate: window.formatDate(new Date(year, month, 1)),
+                isRecurring: true
+            });
+
+            const firstWeekday = weekdays.find(d => d > 1);
+            if (!firstWeekday) return events;
+
+            let idx = weekdays.indexOf(firstWeekday);
+
+            // 본인부담금 4일
+            const copay = weekdays.slice(idx, idx + 4);
+            if (copay.length > 0) {
+                events.push({
+                    id: `rec-${year}-${month}-본인부담금`,
+                    title: '본인부담금 일정',
+                    type: '본인부담금',
+                    isMultiDay: true,
+                    startDate: window.formatDate(new Date(year, month, copay[0])),
+                    endDate: window.formatDate(new Date(year, month, copay[copay.length - 1])),
+                    isRecurring: true
+                });
+                idx += copay.length;
+            }
+
+            // 우편발송
+            if (idx < weekdays.length) {
+                events.push({
+                    id: `rec-${year}-${month}-우편발송`,
+                    title: '우편발송',
+                    type: '우편발송',
+                    isMultiDay: false,
+                    startDate: window.formatDate(new Date(year, month, weekdays[idx])),
+                    endDate: window.formatDate(new Date(year, month, weekdays[idx])),
+                    isRecurring: true
+                });
+                idx++;
+            }
+
+            // 급여대장/상실신고 4일
+            const payroll = weekdays.slice(idx, idx + 4);
+            if (payroll.length > 0) {
+                const payStart = window.formatDate(new Date(year, month, payroll[0]));
+                const payEnd = window.formatDate(new Date(year, month, payroll[payroll.length - 1]));
+                
+                events.push({
+                    id: `rec-${year}-${month}-급여대장`,
+                    title: '급여대장 만들기',
+                    type: '급여대장',
+                    isMultiDay: true,
+                    startDate: payStart,
+                    endDate: payEnd,
+                    isRecurring: true
+                });
+                
+                events.push({
+                    id: `rec-${year}-${month}-상실신고`,
+                    title: '상실신고 취득',
+                    type: '상실신고',
+                    isMultiDay: true,
+                    startDate: payStart,
+                    endDate: payEnd,
+                    isRecurring: true
+                });
+                
+                // 어르신상담 - 급여대장과 같이 시작하여 12일
+                const counselStartIdx = idx;
+                const counsel = weekdays.slice(counselStartIdx, counselStartIdx + 12);
+                if (counsel.length > 0) {
+                    events.push({
+                        id: `rec-${year}-${month}-어르신상담`,
+                        title: '어르신상담 기간',
+                        type: '어르신상담',
+                        isMultiDay: true,
+                        startDate: window.formatDate(new Date(year, month, counsel[0])),
+                        endDate: window.formatDate(new Date(year, month, counsel[counsel.length - 1])),
+                        isRecurring: true
+                    });
+                    
+                    // 요양일정/제공기록지 - 상담 종료 후 3일
+                    const afterCounselIdx = counselStartIdx + counsel.length;
+                    const care = weekdays.slice(afterCounselIdx, afterCounselIdx + 3);
+                    if (care.length > 0) {
+                        const careStart = window.formatDate(new Date(year, month, care[0]));
+                        const careEnd = window.formatDate(new Date(year, month, care[care.length - 1]));
+                        
+                        events.push({
+                            id: `rec-${year}-${month}-요양일정`,
+                            title: '요양 일정 넣기',
+                            type: '요양일정',
+                            isMultiDay: true,
+                            startDate: careStart,
+                            endDate: careEnd,
+                            isRecurring: true
+                        });
+                        
+                        events.push({
+                            id: `rec-${year}-${month}-제공기록지`,
+                            title: '제공기록지 넣기',
+                            type: '제공기록지',
+                            isMultiDay: true,
+                            startDate: careStart,
+                            endDate: careEnd,
+                            isRecurring: true
+                        });
+                    }
+                }
+            }
+
+            // 명세서 - 마지막 평일
+            if (weekdays.length > 0) {
+                const last = weekdays[weekdays.length - 1];
+                events.push({
+                    id: `rec-${year}-${month}-명세서`,
+                    title: '명세서 생성',
+                    type: '명세서',
+                    isMultiDay: false,
+                    startDate: window.formatDate(new Date(year, month, last)),
+                    endDate: window.formatDate(new Date(year, month, last)),
+                    isRecurring: true
+                });
+            }
+
+            return events;
+        };
+
+        window.getColorForType = function(type) {
+            const map = {
+                '청구': '#faccec',
+                '본인부담금': '#cee1ff',
+                '우편발송': '#87b3ef',
+                '어르신상담': '#bcddca',
+                '급여대장': '#b4e7ce',
+                '상실신고': '#a8d8ea',
+                '요양일정': '#ffe4b5',
+                '제공기록지': '#a8d8ea',
+                '명세서': '#d4b5f6'
+            };
+            return map[type] || '#ffd4e0';
+        };
+
+        window.getMultiDayPosition = function(event, dateStr) {
+            if (!event.isMultiDay) return 'single';
+            if (dateStr === event.startDate) return 'start';
+            if (dateStr === event.endDate) return 'end';
+            if (dateStr > event.startDate && dateStr < event.endDate) return 'middle';
+            return 'single';
+        };
+
+        // 렌더링
+        window.renderCalendar = function() {
+            const year = window.currentDate.getFullYear();
+            const month = window.currentDate.getMonth();
+            
+            document.getElementById('currentMonth').textContent = `${year}년 ${month + 1}월`;
+            
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const prevLastDay = new Date(year, month, 0);
+            
+            const firstDayOfWeek = firstDay.getDay();
+            const lastDate = lastDay.getDate();
+            const prevLastDate = prevLastDay.getDate();
+            
+            const recurring = window.generateRecurringEvents(year, month);
+            
+            let html = '';
+            
+            // 이전 달
+            for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+                const date = new Date(year, month - 1, prevLastDate - i);
+                html += window.renderDay(date, true, []);
+            }
+            
+            // 현재 달
+            for (let day = 1; day <= lastDate; day++) {
+                const date = new Date(year, month, day);
+                const dateStr = window.formatDate(date);
+                
+                const events = [
+                    ...recurring.filter(e => {
+                        // 삭제된 정기 일정은 제외
+                        if (window.deletedRecurringEvents.includes(e.id)) {
+                            return false;
+                        }
+                        return e.isMultiDay ? 
+                            (dateStr >= e.startDate && dateStr <= e.endDate) : 
+                            (dateStr === e.startDate);
+                    }),
+                    ...Object.values(window.customEvents).filter(e => 
+                        e.isMultiDay ? 
+                        (dateStr >= e.startDate && dateStr <= e.endDate) : 
+                        (dateStr === e.date || dateStr === e.startDate)
+                    )
+                ];
+                
+                html += window.renderDay(date, false, events);
+            }
+            
+            // 다음 달
+            const remaining = 42 - (firstDayOfWeek + lastDate);
+            for (let day = 1; day <= remaining; day++) {
+                html += window.renderDay(new Date(year, month + 1, day), true, []);
+            }
+            
+            document.getElementById('calendar').innerHTML = html;
+        };
+
+        window.renderDay = function(date, isOther, events) {
+            const dateStr = window.formatDate(date);
+            const today = window.formatDate(new Date());
+            
+            let classes = 'calendar-day';
+            if (isOther) classes += ' other-month';
+            if (dateStr === today) classes += ' today';
+            if (window.isWeekend(date)) classes += ' weekend';
+            
+            // 중복 제거
+            const seen = new Set();
+            const unique = events.filter(e => {
+                if (seen.has(e.id)) return false;
+                seen.add(e.id);
+                return true;
+            });
+            
+            let eventsHtml = '';
+            unique.forEach(event => {
+                // excludeWeekends 설정에 따라 주말 제외
+                if (event.isMultiDay && window.isWeekend(date)) {
+                    // 정기 일정은 항상 주말 제외
+                    if (event.isRecurring) {
+                        return;
+                    }
+                    // 커스텀 일정은 excludeWeekends 설정에 따름
+                    if (event.excludeWeekends !== false) {
+                        return;
+                    }
+                }
+                
+                const pos = window.getMultiDayPosition(event, dateStr);
+                const showTitle = pos === 'single' || pos === 'start';
+                const color = event.color || window.getColorForType(event.type);
+                const className = event.type ? `event-${event.type}` : 'event-custom';
+                
+                let posClass = '';
+                if (event.isMultiDay) {
+                    if (pos === 'start') posClass = 'multi-day-start';
+                    else if (pos === 'middle') posClass = 'multi-day-middle';
+                    else if (pos === 'end') posClass = 'multi-day-end';
+                }
+                
+                const tag = event.isMultiDay ? 'event-bar' : 'event-item';
+                const isRec = event.isRecurring ? 'true' : 'false';
+                
+                eventsHtml += `<div class="${tag} ${className} ${posClass}"
+                    draggable="true"
+                    data-event-id="${event.id}"
+                    data-is-recurring="${isRec}"
+                    onclick="event.stopPropagation(); window.openEditModal('${event.id}', ${isRec});"
+                    ondragstart="window.handleDragStart(event, '${event.id}', ${isRec})"
+                    ondragend="window.handleDragEnd(event)"
+                    style="background:${color};cursor:pointer;"
+                    title="${event.title}">
+                    ${showTitle ? event.title : '&nbsp;'}
+                </div>`;
+            });
+            
+            return `<div class="${classes}" 
+                data-date="${dateStr}"
+                ondragover="window.handleDragOver(event)"
+                ondragleave="window.handleDragLeave(event)"
+                ondrop="window.handleDrop(event, '${dateStr}')">
+                <div class="day-number">${date.getDate()}</div>
+                ${eventsHtml}
+            </div>`;
+        };
+
+        // 드래그앤드롭
+        window.handleDragStart = function(e, eventId, isRecurring) {
+            e.stopPropagation();
+            
+            let event = null;
+            if (isRecurring) {
+                const recurring = window.generateRecurringEvents(
+                    window.currentDate.getFullYear(),
+                    window.currentDate.getMonth()
+                );
+                event = recurring.find(ev => ev.id === eventId);
+            } else {
+                event = window.customEvents[eventId];
+            }
+            
+            if (event) {
+                window.draggedEvent = {...event};
+                e.currentTarget.classList.add('dragging');
+            }
+        };
+
+        window.handleDragEnd = function(e) {
+            e.currentTarget.classList.remove('dragging');
+        };
+
+        window.handleDragOver = function(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('drag-over');
+        };
+
+        window.handleDragLeave = function(e) {
+            e.currentTarget.classList.remove('drag-over');
+        };
+
+        window.handleDrop = function(e, newDate) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            
+            if (!window.draggedEvent) return;
+            
+            const event = window.draggedEvent;
+            
+            if (event.isRecurring) {
+                // 정기 일정을 삭제 목록에 추가
+                if (!window.deletedRecurringEvents.includes(event.id)) {
+                    window.deletedRecurringEvents.push(event.id);
+                    window.saveDeletedRecurringEvents();
+                }
+                
+                // 정기 -> 커스텀
+                const newEvent = {
+                    id: `custom-${Date.now()}`,
+                    title: event.title,
+                    color: window.getColorForType(event.type),
+                    memo: '',
+                    type: event.type,
+                    isMultiDay: event.isMultiDay,
+                    isRecurring: false,
+                    excludeWeekends: true  // 정기 일정은 항상 주말 제외
+                };
+                
+                if (event.isMultiDay) {
+                    // 평일 기간 계산 (주말 제외)
+                    const weekdayDuration = window.weekdaysBetween(event.startDate, event.endDate) - 1;
+                    newEvent.startDate = newDate;
+                    newEvent.endDate = window.addWeekdays(newDate, weekdayDuration);
+                    newEvent.date = newDate;
+                } else {
+                    newEvent.date = newDate;
+                    newEvent.startDate = newDate;
+                    newEvent.endDate = newDate;
+                }
+                
+                window.customEvents[newEvent.id] = newEvent;
+            } else {
+                // 커스텀 이동
+                if (window.customEvents[event.id]) {
+                    if (event.isMultiDay) {
+                        // excludeWeekends 설정에 따라 처리
+                        if (event.excludeWeekends !== false) {
+                            // 주말 제외 모드: 평일만 계산
+                            const weekdayDuration = window.weekdaysBetween(event.startDate, event.endDate) - 1;
+                            window.customEvents[event.id].startDate = newDate;
+                            window.customEvents[event.id].endDate = window.addWeekdays(newDate, weekdayDuration);
+                        } else {
+                            // 주말 포함 모드: 일반 날짜 계산
+                            const duration = window.daysBetween(event.startDate, event.endDate);
+                            window.customEvents[event.id].startDate = newDate;
+                            window.customEvents[event.id].endDate = window.addDays(newDate, duration);
+                        }
+                        window.customEvents[event.id].date = newDate;
+                    } else {
+                        window.customEvents[event.id].date = newDate;
+                        window.customEvents[event.id].startDate = newDate;
+                        window.customEvents[event.id].endDate = newDate;
+                    }
+                }
+            }
+            
+            window.saveCustomEvents();
+            window.draggedEvent = null;
+            window.renderCalendar();
+        };
+
+        // 모달
+        window.toggleDateRange = function() {
+            const isMulti = document.getElementById('isMultiDayEvent').checked;
+            const container = document.getElementById('dateRangeContainer');
+            const excludeWeekendsGroup = document.getElementById('excludeWeekendsGroup');
+            
+            if (isMulti) {
+                // 주말 제외 옵션 보이기
+                excludeWeekendsGroup.style.display = 'block';
+                
+                container.innerHTML = `
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+                        <div>
+                            <label style="font-size:9px;font-weight:600;display:block;margin-bottom:2px;">시작일</label>
+                            <input type="date" class="form-input" id="eventStartDate">
+                        </div>
+                        <div>
+                            <label style="font-size:9px;font-weight:600;display:block;margin-bottom:2px;">종료일</label>
+                            <input type="date" class="form-input" id="eventEndDate">
+                        </div>
+                    </div>
+                `;
+                const today = window.formatDate(new Date());
+                setTimeout(() => {
+                    document.getElementById('eventStartDate').value = today;
+                    document.getElementById('eventEndDate').value = today;
+                }, 0);
+            } else {
+                // 주말 제외 옵션 숨기기
+                excludeWeekendsGroup.style.display = 'none';
+                
+                container.innerHTML = `<input type="date" class="form-input" id="eventDateSingle">`;
+                setTimeout(() => {
+                    document.getElementById('eventDateSingle').value = window.formatDate(new Date());
+                }, 0);
+            }
+        };
+
+
+
+        window.openAddEventModal = function() {
+            window.editingEvent = null;
+            window.isRecurringEdit = false;
+            window.editingRecurringId = null;
+            document.getElementById('modalTitle').textContent = '일정 추가';
+            document.getElementById('eventTitle').value = '';
+            document.getElementById('eventMemo').value = '';
+            document.getElementById('isMultiDayEvent').checked = false;
+            window.toggleDateRange();
+            document.getElementById('deleteBtn').style.display = 'none';
+            window.selectedColor = '#ffd4e0';
+            selectColorDirect('#ffd4e0');
+            document.getElementById('eventModal').classList.add('active');
+        };
+
+        window.openEditModal = function(eventId, isRecurring) {
+            let event = null;
+            
+            if (isRecurring) {
+                const recurring = window.generateRecurringEvents(
+                    window.currentDate.getFullYear(),
+                    window.currentDate.getMonth()
+                );
+                event = recurring.find(e => e.id === eventId);
+                
+                // 정기 일정 편집 플래그 설정
+                window.editingEvent = null;
+                window.isRecurringEdit = true;
+                window.editingRecurringId = eventId;
+                document.getElementById('modalTitle').textContent = '정기 일정 수정';
+                document.getElementById('deleteBtn').style.display = 'block';
+            } else {
+                event = window.customEvents[eventId];
+                window.editingEvent = event;
+                document.getElementById('modalTitle').textContent = '일정 수정';
+                document.getElementById('deleteBtn').style.display = 'block';
+            }
+            
+            if (!event) return;
+            
+            document.getElementById('eventTitle').value = event.title;
+            document.getElementById('eventMemo').value = event.memo || '';
+            document.getElementById('isMultiDayEvent').checked = event.isMultiDay || false;
+            window.toggleDateRange();
+            
+            // 주말 제외 설정 불러오기 (기본값: true)
+            if (event.isMultiDay) {
+                document.getElementById('excludeWeekends').checked = event.excludeWeekends !== false;
+            }
+            
+            setTimeout(() => {
+                if (event.isMultiDay) {
+                    document.getElementById('eventStartDate').value = event.startDate;
+                    document.getElementById('eventEndDate').value = event.endDate;
+                } else {
+                    document.getElementById('eventDateSingle').value = event.date || event.startDate;
+                }
+            }, 50);
+            
+            window.selectedColor = event.color || window.getColorForType(event.type);
+            selectColorDirect(window.selectedColor);
+            document.getElementById('eventModal').classList.add('active');
+        };
+
+        window.closeModal = function() {
+            document.getElementById('eventModal').classList.remove('active');
+            window.editingEvent = null;
+            window.isRecurringEdit = false;
+            window.editingRecurringId = null;
+        };
+
+        window.saveEvent = function() {
+            const title = document.getElementById('eventTitle').value.trim();
+            if (!title) {
+                alert('제목을 입력하세요');
+                return;
+            }
+            
+            const memo = document.getElementById('eventMemo').value;
+            const isMulti = document.getElementById('isMultiDayEvent').checked;
+            const excludeWeekends = document.getElementById('excludeWeekends').checked;
+            
+            let startDate, endDate, date;
+            
+            if (isMulti) {
+                const s = document.getElementById('eventStartDate');
+                const e = document.getElementById('eventEndDate');
+                if (!s || !e || !s.value || !e.value) {
+                    alert('날짜를 입력하세요');
+                    return;
+                }
+                startDate = s.value;
+                endDate = e.value;
+                date = startDate;
+                if (new Date(startDate) > new Date(endDate)) {
+                    alert('종료일은 시작일 이후여야 합니다');
+                    return;
+                }
+            } else {
+                const d = document.getElementById('eventDateSingle');
+                if (!d || !d.value) {
+                    alert('날짜를 입력하세요');
+                    return;
+                }
+                date = d.value;
+                startDate = date;
+                endDate = date;
+            }
+            
+            // 정기 일정 수정인 경우
+            if (window.isRecurringEdit && window.editingRecurringId) {
+                // 기존 정기 일정을 삭제 목록에 추가
+                if (!window.deletedRecurringEvents.includes(window.editingRecurringId)) {
+                    window.deletedRecurringEvents.push(window.editingRecurringId);
+                    window.saveDeletedRecurringEvents();
+                }
+                
+                // 새로운 커스텀 일정으로 추가
+                const newEvent1 = {
+                    id: `custom-${Date.now()}`,
+                    title,
+                    date,
+                    startDate,
+                    endDate,
+                    color: window.selectedColor,
+                    memo,
+                    type: 'custom',
+                    isMultiDay: isMulti,
+                    isRecurring: false,
+                    excludeWeekends: isMulti ? excludeWeekends : false
+                };
+                window.customEvents[newEvent1.id] = newEvent1;
+                
+                window.isRecurringEdit = false;
+                window.editingRecurringId = null;
+            } 
+            // 커스텀 일정 수정인 경우
+            else if (window.editingEvent) {
+                if (window.customEvents[window.editingEvent.id]) {
+                    window.customEvents[window.editingEvent.id] = {
+                        ...window.customEvents[window.editingEvent.id],
+                        title,
+                        date,
+                        startDate,
+                        endDate,
+                        color: window.selectedColor,
+                        memo,
+                        isMultiDay: isMulti,
+                        excludeWeekends: isMulti ? excludeWeekends : false
+                    };
+                }
+            } 
+            // 새 일정 추가인 경우
+            else {
+                const newEvent = {
+                    id: `custom-${Date.now()}`,
+                    title,
+                    date,
+                    startDate,
+                    endDate,
+                    color: window.selectedColor,
+                    memo,
+                    type: 'custom',
+                    isMultiDay: isMulti,
+                    isRecurring: false,
+                    excludeWeekends: isMulti ? excludeWeekends : false
+                };
+                window.customEvents[newEvent.id] = newEvent;
+            }
+            
+            window.saveCustomEvents();
+            window.closeModal();
+            window.renderCalendar();
+        };
+
+        window.deleteEvent = function() {
+            console.log('🗑️ 삭제 버튼 클릭!');
+            
+            // 정기 일정 삭제인 경우
+            if (window.isRecurringEdit && window.editingRecurringId) {
+                console.log('정기 일정 삭제:', window.editingRecurringId);
+                // confirm 제거 - 바로 삭제
+                // 삭제 목록에 추가
+                if (!window.deletedRecurringEvents.includes(window.editingRecurringId)) {
+                    window.deletedRecurringEvents.push(window.editingRecurringId);
+                    console.log('삭제 목록에 추가됨');
+                    window.saveDeletedRecurringEvents();
+                }
+                
+                window.isRecurringEdit = false;
+                window.editingRecurringId = null;
+                window.closeModal();
+                window.renderCalendar();
+                return;
+            }
+            
+            // 커스텀 일정 삭제인 경우
+            if (!window.editingEvent) {
+                console.log('⚠️ editingEvent가 없음!');
+                return;
+            }
+            
+            console.log('커스텀 일정 삭제:', window.editingEvent.id);
+            
+            // confirm 제거 - 바로 삭제
+            if (window.customEvents[window.editingEvent.id]) {
+                console.log('Firebase에서 삭제 중...');
+                delete window.customEvents[window.editingEvent.id];
+                window.saveCustomEvents();
+                window.closeModal();
+                window.renderCalendar();
+                console.log('✅ 삭제 완료!');
+            } else {
+                console.log('⚠️ 일정을 찾을 수 없음:', window.editingEvent.id);
+            }
+        };
+
+        window.prevMonth = function() {
+            window.currentDate.setMonth(window.currentDate.getMonth() - 1);
+            window.renderCalendar();
+        };
+
+        window.nextMonth = function() {
+            window.currentDate.setMonth(window.currentDate.getMonth() + 1);
+            window.renderCalendar();
+        };
+        
+        // 옵션 2: 수동 동기화 버튼
+        window.forceSync = function() {
+            console.log('🔄 수동 동기화 시작...');
+            
+            // 사용자 피드백
+            var syncBtn = event.target;
+            var originalText = syncBtn.textContent;
+            syncBtn.textContent = '⏳ 동기화 중...';
+            syncBtn.disabled = true;
+            syncBtn.style.opacity = '0.6';
+            
+            // Firebase에서 최신 데이터 강제 로드
+            var customEventsPromise = database.ref('calendar_data/customEvents').once('value');
+            var deletedEventsPromise = database.ref('calendar_data/deletedRecurringEvents').once('value');
+            
+            Promise.all([customEventsPromise, deletedEventsPromise])
+                .then(function(snapshots) {
+                    var customSnapshot = snapshots[0];
+                    var deletedSnapshot = snapshots[1];
+                    
+                    // 최신 데이터로 강제 업데이트
+                    window.customEvents = customSnapshot.val() || {};
+                    window.deletedRecurringEvents = deletedSnapshot.val() || [];
+                    
+                    console.log('✅ 동기화 완료!');
+                    console.log('📊 커스텀 일정:', Object.keys(window.customEvents).length, '개');
+                    console.log('🗑️ 삭제된 정기 일정:', window.deletedRecurringEvents.length, '개');
+                    
+                    // 화면 업데이트
+                    window.renderCalendar();
+                    
+                    // 버튼 복원 (성공 표시)
+                    syncBtn.textContent = '✅ 완료!';
+                    setTimeout(function() {
+                        syncBtn.textContent = originalText;
+                        syncBtn.disabled = false;
+                        syncBtn.style.opacity = '1';
+                    }, 1500);
+                })
+                .catch(function(error) {
+                    console.error('❌ 동기화 실패:', error);
+                    alert('동기화 실패. 인터넷 연결을 확인하세요.');
+                    
+                    // 버튼 복원 (실패 표시)
+                    syncBtn.textContent = '❌ 실패';
+                    setTimeout(function() {
+                        syncBtn.textContent = originalText;
+                        syncBtn.disabled = false;
+                        syncBtn.style.opacity = '1';
+                    }, 2000);
+                });
+        };
+        
+
+
+        // 초기화 (PIN 입력 후 authenticateWithFirebase에서 처리)
+        // DOMContentLoaded는 PIN 화면만 표시
+        window.isDataLoaded = true; // authenticateWithFirebase에서 초기 로드 완료 처리
+    </script>
+</body>
+</html>                                                                                                                                                                         
